@@ -3,6 +3,7 @@
 #include "runtime.h"
 
 #include <functional>
+#include <variant>
 
 namespace ast {
 
@@ -36,6 +37,8 @@ using BoolConst = ValueStatement<runtime::Bool>;
 x = circle.center.x
 */
 class VariableValue : public Statement {
+    std::vector<std::string> dotted_ids_;
+
 public:
     explicit VariableValue(const std::string& var_name);
     explicit VariableValue(std::vector<std::string> dotted_ids);
@@ -45,6 +48,8 @@ public:
 
 // Присваивает переменной, имя которой задано в параметре var, значение выражения rv
 class Assignment : public Statement {
+    std::string name_;
+    std::unique_ptr<Statement> rvalue_;
 public:
     Assignment(std::string var, std::unique_ptr<Statement> rv);
 
@@ -53,6 +58,10 @@ public:
 
 // Присваивает полю object.field_name значение выражения rv
 class FieldAssignment : public Statement {
+    VariableValue object_;
+    std::string field_name_;
+    std::unique_ptr<Statement> rvalue_;
+
 public:
     FieldAssignment(VariableValue object, std::string field_name, std::unique_ptr<Statement> rv);
 
@@ -64,12 +73,15 @@ class None : public Statement {
 public:
     runtime::ObjectHolder Execute([[maybe_unused]] runtime::Closure& closure,
                                   [[maybe_unused]] runtime::Context& context) override {
-        return {};
+        return runtime::ObjectHolder::None();
     }
 };
 
 // Команда print
 class Print : public Statement {
+
+std::variant<std::string , std::vector<std::unique_ptr<Statement>>> args_;
+
 public:
     // Инициализирует команду print для вывода значения выражения argument
     explicit Print(std::unique_ptr<Statement> argument);
@@ -86,6 +98,10 @@ public:
 
 // Вызывает метод object.method со списком параметров args
 class MethodCall : public Statement {
+std::unique_ptr<Statement> object_;
+std::string method_;
+std::vector<std::unique_ptr<Statement>> args_;
+
 public:
     MethodCall(std::unique_ptr<Statement> object, std::string method,
                std::vector<std::unique_ptr<Statement>> args);
@@ -107,6 +123,10 @@ p = Person()
 p.set_name("Ivan")
 */
 class NewInstance : public Statement {
+
+const runtime::Class& new_object_class_;
+std::vector<std::unique_ptr<Statement>> args_;
+
 public:
     explicit NewInstance(const runtime::Class& class_);
     NewInstance(const runtime::Class& class_, std::vector<std::unique_ptr<Statement>> args);
@@ -116,9 +136,10 @@ public:
 
 // Базовый класс для унарных операций
 class UnaryOperation : public Statement {
+protected:
+std::unique_ptr<Statement> argument_;
 public:
-    explicit UnaryOperation(std::unique_ptr<Statement> /*argument*/) {
-        // Реализуйте метод самостоятельно
+    explicit UnaryOperation(std::unique_ptr<Statement> argument) : argument_(std::move(argument)) {
     }
 };
 
@@ -131,9 +152,11 @@ public:
 
 // Родительский класс Бинарная операция с аргументами lhs и rhs
 class BinaryOperation : public Statement {
+protected:
+std::unique_ptr<Statement> lhs_;
+std::unique_ptr<Statement> rhs_;
 public:
-    BinaryOperation(std::unique_ptr<Statement> /*lhs*/, std::unique_ptr<Statement> /*rhs*/) {
-        // Реализуйте метод самостоятельно
+    BinaryOperation(std::unique_ptr<Statement> lhs, std::unique_ptr<Statement> rhs) : lhs_(std::move(lhs)), rhs_(std::move(rhs)) {
     }
 };
 
@@ -211,16 +234,26 @@ public:
 
 // Составная инструкция (например: тело метода, содержимое ветки if, либо else)
 class Compound : public Statement {
+
+std::vector<std::unique_ptr<Statement>> statement_;
+
 public:
-    // Конструирует Compound из нескольких инструкций типа unique_ptr<Statement>
-    template <typename... Args>
-    explicit Compound(Args&&... /*args*/) {
-        // Реализуйте метод самостоятельно
-    }
 
     // Добавляет очередную инструкцию в конец составной инструкции
-    void AddStatement(std::unique_ptr<Statement> /*stmt*/) {
-        // Реализуйте метод самостоятельно
+    void AddStatement(std::unique_ptr<Statement> stmt) {
+        statement_.emplace_back(std::move(stmt));
+    }
+
+//    template <typename T, typename... Args>
+//    void AddStatement(T&& arg_0, Args&&... args) {
+//    AddStatement(arg_0);
+//    AddStatement(args...);
+//    }
+
+    // Конструирует Compound из нескольких инструкций типа unique_ptr<Statement>
+    template <typename... Args>
+    explicit Compound(Args&&... args) {
+        (... , AddStatement(std::move(args)));
     }
 
     // Последовательно выполняет добавленные инструкции. Возвращает None
@@ -229,6 +262,9 @@ public:
 
 // Тело метода. Как правило, содержит составную инструкцию
 class MethodBody : public Statement {
+
+std::unique_ptr<Statement> body_;
+
 public:
     explicit MethodBody(std::unique_ptr<Statement>&& body);
 
@@ -240,8 +276,11 @@ public:
 
 // Выполняет инструкцию return с выражением statement
 class Return : public Statement {
+
+std::unique_ptr<Statement> statement_;
+
 public:
-    explicit Return(std::unique_ptr<Statement> /*statement*/) {
+    explicit Return(std::unique_ptr<Statement> statement) : statement_(std::move(statement)) {
         // Реализуйте метод самостоятельно
     }
 
@@ -252,6 +291,9 @@ public:
 
 // Объявляет класс
 class ClassDefinition : public Statement {
+
+runtime::ObjectHolder class_;
+
 public:
     // Гарантируется, что ObjectHolder содержит объект типа runtime::Class
     explicit ClassDefinition(runtime::ObjectHolder cls);
@@ -263,6 +305,11 @@ public:
 
 // Инструкция if <condition> <if_body> else <else_body>
 class IfElse : public Statement {
+
+std::unique_ptr<Statement> condition_;
+std::unique_ptr<Statement> if_body_;
+std::unique_ptr<Statement> else_body_;
+
 public:
     // Параметр else_body может быть равен nullptr
     IfElse(std::unique_ptr<Statement> condition, std::unique_ptr<Statement> if_body,
@@ -273,10 +320,13 @@ public:
 
 // Операция сравнения
 class Comparison : public BinaryOperation {
+// Comparator задаёт функцию, выполняющую сравнение значений аргументов
+using Comparator = std::function<bool(const runtime::ObjectHolder&,
+                                        const runtime::ObjectHolder&, runtime::Context&)>;
+
+Comparator cmp_;
+
 public:
-    // Comparator задаёт функцию, выполняющую сравнение значений аргументов
-    using Comparator = std::function<bool(const runtime::ObjectHolder&,
-                                          const runtime::ObjectHolder&, runtime::Context&)>;
 
     Comparison(Comparator cmp, std::unique_ptr<Statement> lhs, std::unique_ptr<Statement> rhs);
 
