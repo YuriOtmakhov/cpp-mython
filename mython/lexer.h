@@ -87,7 +87,7 @@ public:
 
 class Lexer {
 
-std::istream& input_;
+std::istreambuf_iterator<char> input_it_;
 int old_dent_ = 0;
 int curr_dent_ = 0;
 Token current_token_ = token_type::Newline();
@@ -95,30 +95,25 @@ Token current_token_ = token_type::Newline();
 Token ParseInput(std::istreambuf_iterator<char>& it);
 
 public:
+
+    static constexpr std::istreambuf_iterator<char> END = std::istreambuf_iterator<char>();
+
     explicit Lexer(std::istream& input);
 
-    // Возвращает ссылку на текущий токен или token_type::Eof, если поток токенов закончился
     [[nodiscard]] const Token& CurrentToken() const;
 
-    // Возвращает следующий токен, либо token_type::Eof, если поток токенов закончился
     Token NextToken();
 
-    // Если текущий токен имеет тип T, метод возвращает ссылку на него.
-    // В противном случае метод выбрасывает исключение LexerError
     template <typename T>
     const T& Expect() const {
         using namespace std::literals;
-        if (!current_token_.Is<T>()) {
-            std::stringstream str;
-            str << current_token_;
-            throw LexerError("Expect error: incorrect token type"s+str.str());
-        }
+        if (!current_token_.Is<T>())
+            throw LexerError("Expect error: incorrect token type"s);
+
 
         return current_token_.As<T>();
     }
 
-    // Метод проверяет, что текущий токен имеет тип T, а сам токен содержит значение value.
-    // В противном случае метод выбрасывает исключение LexerError
     template <typename T, typename U>
     void Expect(const U& value) const {
         using namespace std::literals;
@@ -127,8 +122,6 @@ public:
             throw LexerError("Expect error: current_token.value != value"s);
     }
 
-    // Если следующий токен имеет тип T, метод возвращает ссылку на него.
-    // В противном случае метод выбрасывает исключение LexerError
     template <typename T>
     const T& ExpectNext() {
         using namespace std::literals;
@@ -136,8 +129,6 @@ public:
         return Expect<T>();
     }
 
-    // Метод проверяет, что следующий токен имеет тип T, а сам токен содержит значение value.
-    // В противном случае метод выбрасывает исключение LexerError
     template <typename T, typename U>
     void ExpectNext(const U& value) {
         using namespace std::literals;

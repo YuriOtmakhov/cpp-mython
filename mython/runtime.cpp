@@ -2,7 +2,6 @@
 
 #include <cassert>
 #include <optional>
-#include <sstream>
 
 using namespace std;
 
@@ -17,7 +16,6 @@ void ObjectHolder::AssertIsValid() const {
 }
 
 ObjectHolder ObjectHolder::Share(Object& object) {
-    // Возвращаем невладеющий shared_ptr (его deleter ничего не делает)
     return ObjectHolder(std::shared_ptr<Object>(&object, [](auto* /*p*/) { /* do nothing */ }));
 }
 
@@ -44,9 +42,6 @@ ObjectHolder::operator bool() const {
 }
 
 bool IsTrue(const ObjectHolder& object) {
-// Проверяет, содержится ли в object значение, приводимое к True
-// Для отличных от нуля чисел, True и непустых строк возвращается true. В остальных случаях - false.
-    // Заглушка. Реализуйте метод самостоятельно
     if (!object)
         return false;
 
@@ -61,19 +56,13 @@ bool IsTrue(const ObjectHolder& object) {
 }
 
 void ClassInstance::Print(std::ostream& os, Context& context) {
-    /*
-     * Если у объекта есть метод __str__, выводит в os результат, возвращённый этим методом.
-     * В противном случае в os выводится адрес объекта.
-     */
     if (HasMethod("__str__"s, 0))
         Call ("__str__"s, {},context)->Print(os, context);
     else
         os << this;
-    // Заглушка, реализуйте метод самостоятельно
 }
 
 bool ClassInstance::HasMethod(const std::string& method, size_t argument_count) const {
-    //methods_.count({method, {""s,argument_count}, nullopt });
     auto ptr_metod = class_.GetMethod(method);
     if (ptr_metod != nullptr)
         if (ptr_metod->formal_params.size() == argument_count)
@@ -90,7 +79,6 @@ const Closure& ClassInstance::Fields() const {
 }
 
 ClassInstance::ClassInstance(const Class& cls) : class_(cls) {
-    // Реализуйте метод самостоятельно
 }
 
 ObjectHolder ClassInstance::Call(const std::string& method,
@@ -100,10 +88,10 @@ ObjectHolder ClassInstance::Call(const std::string& method,
         throw std::runtime_error("Not method"s);
 
     auto method_ptr = class_.GetMethod(method);
-    Closure args_closure;//Fields());
+    Closure args_closure;
     args_closure["self"s] = ObjectHolder::Share(*this);
     for (auto name_ptr = method_ptr->formal_params.begin(); name_ptr != method_ptr->formal_params.end(); ++name_ptr)
-        args_closure[*name_ptr] = /*std::move*/(actual_args[std::distance(method_ptr->formal_params.begin(), name_ptr)]);
+        args_closure[*name_ptr] = (actual_args[std::distance(method_ptr->formal_params.begin(), name_ptr)]);
 
     return method_ptr->body->Execute(args_closure,context);
 }
@@ -121,7 +109,7 @@ const Method* Class::GetMethod(const std::string& name) const {
     return nullptr;
 }
 
-[[nodiscard]] /*inline*/ const std::string& Class::GetName() const {
+[[nodiscard]] const std::string& Class::GetName() const {
     return name_;
 }
 
@@ -178,22 +166,18 @@ bool Less(const ObjectHolder& lhs, const ObjectHolder& rhs, Context& context) {
 
 bool NotEqual(const ObjectHolder& lhs, const ObjectHolder& rhs, Context& context) {
     return !Equal(lhs,rhs,context);
-    //throw std::runtime_error("Cannot compare objects for equality"s);
 }
 
 bool Greater(const ObjectHolder& lhs, const ObjectHolder& rhs, Context& context) {
     return !Less(lhs, rhs,context) && NotEqual(lhs, rhs,context);
-    //throw std::runtime_error("Cannot compare objects for equality"s);
 }
 
 bool LessOrEqual(const ObjectHolder& lhs, const ObjectHolder& rhs, Context& context) {
     return !Greater(lhs,rhs,context);
-    //throw std::runtime_error("Cannot compare objects for equality"s);
 }
 
 bool GreaterOrEqual(const ObjectHolder& lhs, const ObjectHolder& rhs, Context& context) {
     return !Less(lhs,rhs,context);
-    //throw std::runtime_error("Cannot compare objects for equality"s);
 }
 
 }  // namespace runtime

@@ -76,22 +76,17 @@ std::ostream& operator<<(std::ostream& os, const Token& rhs) {
     return os << "Unknown token :("sv;
 }
 
-Lexer::Lexer(std::istream& input) : input_(input) {
-//    auto it = std::istreambuf_iterator<char>(input_);
-//    current_token_ = ParseInput(it);
+Lexer::Lexer(std::istream& input) : input_it_(input) {
     NextToken();
 }
 
 const Token& Lexer::CurrentToken() const {
-//    if (!current_token_)
-//        NextToken();
     return current_token_;
-    //throw std::logic_error("Not implemented"s);
 }
 
 Token ReadNumber (std::istreambuf_iterator<char>& it) {
     int numder = 0;
-    for (auto end = std::istreambuf_iterator<char>(); it != end; ++it)
+    for (; it != Lexer::END; ++it)
         if (*it >= '0' && *it <= '9')
             numder = numder*10 + (*it - '0');
         else
@@ -102,14 +97,13 @@ Token ReadNumber (std::istreambuf_iterator<char>& it) {
 
 inline Token ReadString (std::istreambuf_iterator<char>& it) {
     std::string str;
-    auto end = std::istreambuf_iterator<char>();
     for (char separator = *it++; *it != separator; ++it) {
-        if (it == end)
+        if (it == Lexer::END)
             throw std::logic_error("String parsing error"s);
 
         if (*it == '\\') {
             ++it;
-            if (it == end)
+            if (it == Lexer::END)
                 throw std::logic_error("String parsing error"s);
 
             switch (*it) {
@@ -156,16 +150,14 @@ std::string ReadWord (std::istreambuf_iterator<char>& it) {
 }
 
 Token Lexer::ParseInput(std::istreambuf_iterator<char>& it) {
-//    if (it == std::istreambuf_iterator<char>())
-//        return token_type::Eof();
 
     for (;*it == ' '; ++it)
         if (current_token_.Is<token_type::Newline>())
             ++curr_dent_;
 
     if (*it == '#')
-        for (auto end = std::istreambuf_iterator<char>();*it != '\n'; ++it)
-            if (it == end)
+        for (;*it != '\n'; ++it)
+            if (it == END)
                 return token_type::Eof();
 
     if (*it == '\n'){
@@ -185,7 +177,7 @@ Token Lexer::ParseInput(std::istreambuf_iterator<char>& it) {
         return token_type::Dedent();
     }
 
-    if (it == std::istreambuf_iterator<char>())
+    if (it == END)
         return token_type::Eof();
 
     if (*it == '\'' || *it == '"' )
@@ -284,34 +276,22 @@ Token Lexer::ParseInput(std::istreambuf_iterator<char>& it) {
 }
 
 Token Lexer::NextToken() {
-//    if (input_.eof())
-//        return token_type::Eof();
-//    std::cerr<<current_token_<<std::endl;
-
-    auto it = std::istreambuf_iterator<char>(input_);
-    if (it == std::istreambuf_iterator<char>()) {
+    if (input_it_ == END) {
         if (current_token_.Is<token_type::Eof>())
             return token_type::Eof();
         else if (current_token_.Is<token_type::Newline>() || current_token_.Is<token_type::Dedent>()){
             if (curr_dent_ < old_dent_) {
                 old_dent_ -= 2;
                 current_token_ = token_type::Dedent();
-                return token_type::Dedent();
-            }
+            }else
+                current_token_ = token_type::Eof();
+        }else
+            current_token_ = token_type::Newline();
+    }else
+        current_token_ = ParseInput(input_it_);
 
-            current_token_ = token_type::Eof();
-            return token_type::Eof();
-        }else {
-            current_token_ =token_type::Newline();// token_type::Eof();
-            return token_type::Newline();
-        }
-    }
-    current_token_ = ParseInput(it);
     return current_token_;
 
-
-
-    //throw std::logic_error("Not implemented"s);
 }
 
 }  // namespace parse

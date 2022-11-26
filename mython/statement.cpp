@@ -53,7 +53,7 @@ unique_ptr<Print> Print::Variable(const std::string& name) {
     return new_print_ptn;
 }
 
-Print::Print(unique_ptr<Statement> argument) /*: args_({std::move(argument)})*/ {
+Print::Print(unique_ptr<Statement> argument) {
     vector<unique_ptr<Statement>> tmp;
     tmp.emplace_back(std::move(argument));
     args_ = std::move(tmp);
@@ -64,7 +64,7 @@ Print::Print(vector<unique_ptr<Statement>> args) : args_(std::move(args)) {
 
 ObjectHolder Print::Execute(Closure& closure, Context& context) {
     if (std::holds_alternative<std::string>(args_)) {
-        if ((bool)closure.at(std::get<std::string>(args_)))
+        if (closure.at(std::get<std::string>(args_)))
             closure.at(std::get<std::string>(args_))->Print(context.GetOutputStream(),context);
     }else {
         bool is_first = true;
@@ -74,7 +74,7 @@ ObjectHolder Print::Execute(Closure& closure, Context& context) {
             else
                 context.GetOutputStream()<<' ';
 
-            if (auto obj = item->Execute(closure,context); (bool)obj)
+            if (auto obj = item->Execute(closure,context); obj)
                 obj->Print(context.GetOutputStream(),context);
             else
                 context.GetOutputStream()<<"None"s;
@@ -89,7 +89,6 @@ MethodCall::MethodCall(std::unique_ptr<Statement> object, std::string method,
 }
 
 ObjectHolder MethodCall::Execute(Closure& closure, Context& context) {
-    // Вызывает метод object.method со списком параметров args
     auto class_ptr = object_->Execute(closure,context).TryAs<runtime::ClassInstance>();
     if (class_ptr)
         if (class_ptr->HasMethod(method_, args_.size())) {
@@ -116,12 +115,6 @@ ObjectHolder Stringify::Execute(Closure& closure, Context& context) {
 }
 
 ObjectHolder Add::Execute(Closure& closure, Context& context) {
-    // Заглушка. Реализуйте метод самостоятельно
-    // Поддерживается сложение:
-    //  число + число
-    //  строка + строка
-    //  объект1 + объект2, если у объект1 - пользовательский класс с методом _add__(rhs)
-    // В противном случае при вычислении выбрасывается runtime_error
     auto lhs = lhs_->Execute(closure,context);
     auto rhs = rhs_->Execute(closure,context);
     if (auto l_ptr = lhs.TryAs<runtime::Number>(); l_ptr)
@@ -133,16 +126,13 @@ ObjectHolder Add::Execute(Closure& closure, Context& context) {
             return ObjectHolder::Own( runtime::String( l_ptr->GetValue() +  r_ptr->GetValue() ) );
 
     if (auto l_ptr = lhs.TryAs<runtime::ClassInstance>(); l_ptr)
-        if (/*auto r_ptr = rhs.TryAs<runtime::ClassInstance>(); r_ptr &&*/ l_ptr->HasMethod(ADD_METHOD, 1))
+        if (l_ptr->HasMethod(ADD_METHOD, 1))
             return l_ptr->Call(ADD_METHOD, {rhs} ,context);
 
     throw std::runtime_error("incorrect Add operands"s);
 }
 
 ObjectHolder Sub::Execute(Closure& closure, Context& context) {
-    // Поддерживается вычитание:
-    //  число - число
-    // Если lhs и rhs - не числа, выбрасывается исключение runtime_error
     auto lhs = lhs_->Execute(closure,context);
     auto rhs = rhs_->Execute(closure,context);
     if (auto l_ptr = lhs.TryAs<runtime::Number>(); l_ptr)
@@ -153,9 +143,6 @@ ObjectHolder Sub::Execute(Closure& closure, Context& context) {
 }
 
 ObjectHolder Mult::Execute(Closure& closure, Context& context) {
-    // Поддерживается умножение:
-    //  число * число
-    // Если lhs и rhs - не числа, выбрасывается исключение runtime_error
     auto lhs = lhs_->Execute(closure,context);
     auto rhs = rhs_->Execute(closure,context);
     if (auto l_ptr = lhs.TryAs<runtime::Number>(); l_ptr)
@@ -166,10 +153,6 @@ ObjectHolder Mult::Execute(Closure& closure, Context& context) {
 }
 
 ObjectHolder Div::Execute(Closure& closure, Context& context) {
-    // Поддерживается деление:
-    //  число / число
-    // Если lhs и rhs - не числа, выбрасывается исключение runtime_error
-    // Если rhs равен 0, выбрасывается исключение runtime_error
     auto lhs = lhs_->Execute(closure,context);
     auto rhs = rhs_->Execute(closure,context);
     if (auto l_ptr = lhs.TryAs<runtime::Number>(); l_ptr)
@@ -194,8 +177,6 @@ ClassDefinition::ClassDefinition(ObjectHolder cls) : class_(cls) {
 }
 
 ObjectHolder ClassDefinition::Execute(Closure& closure, Context& /*context*/) {
-    // Создаёт внутри closure новый объект, совпадающий с именем класса и значением, переданным в
-    // конструктор
     closure[class_.TryAs<runtime::Class>()->GetName()] = class_;
 
     return ObjectHolder::None();
@@ -206,13 +187,9 @@ FieldAssignment::FieldAssignment(VariableValue object, std::string field_name,
 }
 
 ObjectHolder FieldAssignment::Execute(Closure& closure, Context& context) {
-    //if(closure.count(object_.Execute(closure, context)))
-//        return /*closure[*/object_.Execute(closure, context)/*]*/.TryAs<runtime::ClassInstance>()->Fields()[field_name_] = rvalue_->Execute(closure, context);
-    if(auto item_ptr = object_.Execute(closure, context).TryAs<runtime::ClassInstance>(); item_ptr /*&& field_name_ != "self"s*/)
+    if(auto item_ptr = object_.Execute(closure, context).TryAs<runtime::ClassInstance>(); item_ptr )
         return item_ptr->Fields()[field_name_] = rvalue_->Execute(closure, context);
-//    else
-//        item->Print(std::cerr, context);
-//    return {};
+
     throw std::runtime_error("Class has not self"s);
 }
 
@@ -230,9 +207,6 @@ ObjectHolder IfElse::Execute(Closure& closure, Context& context) {
 }
 
 ObjectHolder Or::Execute(Closure& closure, Context& context) {
-    // Значение аргумента rhs вычисляется, только если значение lhs
-    // после приведения к Bool равно False
-
     bool lhs = runtime::IsTrue(lhs_->Execute(closure,context));
     if (lhs)
         return ObjectHolder::Own( runtime::Bool( true ) );
@@ -242,9 +216,6 @@ ObjectHolder Or::Execute(Closure& closure, Context& context) {
 }
 
 ObjectHolder And::Execute(Closure& closure, Context& context) {
-    // Заглушка. Реализуйте метод самостоятельно
-    // Значение аргумента rhs вычисляется, только если значение lhs
-    // после приведения к Bool равно True
     bool lhs = runtime::IsTrue(lhs_->Execute(closure,context));
     if (!lhs)
         return ObjectHolder::Own( runtime::Bool( false ) );
@@ -260,18 +231,15 @@ ObjectHolder Not::Execute(Closure& closure, Context& context) {
 
 Comparison::Comparison(Comparator cmp, unique_ptr<Statement> lhs, unique_ptr<Statement> rhs)
     : BinaryOperation(std::move(lhs), std::move(rhs)), cmp_(cmp) {
-
 }
 
 ObjectHolder Comparison::Execute(Closure& closure, Context& context) {
-
     return ObjectHolder::Own( runtime::Bool(cmp_(lhs_->Execute(closure,context),
                                                 rhs_->Execute(closure,context),
                                                 context)) );
 }
 
 NewInstance::NewInstance(const runtime::Class& class_, std::vector<std::unique_ptr<Statement>> args) : new_object_class_(class_), args_(std::move(args)) {
-
 }
 
 NewInstance::NewInstance(const runtime::Class& class_) : new_object_class_(class_) {
@@ -287,16 +255,14 @@ ObjectHolder NewInstance::Execute(Closure& closure, Context& context) {
 
        ptr_class->Call(INIT_METHOD,vector_args,context);
     }
-    return new_object_;//ObjectHolder::Own(std::move(new_object_));
+    return new_object_;
 }
 
 MethodBody::MethodBody(std::unique_ptr<Statement>&& body) : body_(std::move(body)) {
 }
 
 ObjectHolder MethodBody::Execute(Closure& closure, Context& context) {
-    // Вычисляет инструкцию, переданную в качестве body.
-    // Если внутри body была выполнена инструкция return, возвращает результат return
-    // В противном случае возвращает None
+
     try {
         body_->Execute(closure,context);
     }
