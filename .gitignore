@@ -8,4 +8,5 @@ myton_interpreter
 *.la
 *.a
 *.lib
+*.layout
 
